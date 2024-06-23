@@ -10,11 +10,11 @@ Following master Karpathy with GPT-2 implementation and training
   Also:
   - the positional embeddings are learned
     the way they are noisy in the original model tells that its undertrained
-  - layer norms are before, not after blocks
+  - layer notexts are before, not after blocks
     this is because clean residual pathways are a desirable architecture choice
     this allows gradients to flow from the very top uninterrupted, due to addition
     just passing them down
-  - layer norm was added after final self attention
+  - layer notext was added after final self attention
   - h in module dict is the whole gray block
   - mlp is map, attention is reduce
 
@@ -23,13 +23,13 @@ Following master Karpathy with GPT-2 implementation and training
 - torch view and reshape are very similar, 
 but 1. reshape can handle non-contigous tensors (still have to check what goes wrong with non-contigous), 
 and 2. view will return a tensor using the same memory area as the viewed object, reshape may clone or return same mem
-- at network initialization we expect all the vocab tokens to have roughly equal probabilities, we do not want the distribution to be spikeyyyyy, therefore in this case the loss should be equal to $$L(\frac{1}{\rm{vocab_size}}) = L(\frac{1}{\rm{50257}}) = -ln(\frac{1}{\rm{50257}}) = 10.82$$
+- at network initialization we expect all the vocab tokens to have roughly equal probabilities, we do not want the distribution to be spikeyyyyy, therefore in this case the loss should be equal to $$L(\frac{1}{\text{vocabsize}}) = L(\frac{1}{\text{50257}}) = -ln(\frac{1}{\text{50257}}) = 10.82$$
 
 ## my whims
 - train with rope
 - play with params on small models
 - play with other activation functions
-- learn more about layernorms and sparsity
+- learn more about layernotexts and sparsity
 
 ## My implementation fuckups
 
