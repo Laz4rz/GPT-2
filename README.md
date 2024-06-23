@@ -24,6 +24,8 @@ Following master Karpathy with GPT-2 implementation and training
 but 1. reshape can handle non-contigous tensors (still have to check what goes wrong with non-contigous), 
 and 2. view will return a tensor using the same memory area as the viewed object, reshape may clone or return same mem
 - at network initialization we expect all the vocab tokens to have roughly equal probabilities, we do not want the distribution to be spikeyyyyy, therefore in this case the loss should be equal to $$L(\frac{1}{\text{vocab}\textunderscore\text{size}}) = L(\frac{1}{50257}) = -ln(\frac{1}{50257}) = 10.82$$
+- genius advice: to be quite sure your implementation is correct, check if you can totally overfit on a single example
+
 
 ## my whims
 - train with rope

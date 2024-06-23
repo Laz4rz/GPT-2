@@ -5,26 +5,36 @@ import torch
 import torch.nn as nn
 from torch.nn import functional as F
 
+
+# infer device type
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(f"Device: {device}")
+
+
 # get data batch and encode
 enc = tiktoken.get_encoding("gpt2")
 with open("input.txt", "r") as file:
     text = file.read()[:1000]
 tokens = enc.encode(text)
 B, T   = 4, 32
-buf    = torch.tensor(tokens[:B*T + 1])
+buf    = torch.tensor(tokens[:B*T + 1]).to(device)
 x      = buf[:-1].view(B, T)
 y      = buf[1:].view(B, T) 
 
 # init model
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model  = GPT(GPTConfig()) # random model initialization, will still produce some readable sentence parts due to tokenizer construction
-print(f"Device: {device}")
 print("Model loaded successfully!")
 
 # get logits
-logits, loss = model(x, y)
-print(loss)
-print(logits.shape)
+# apparently AdamW is bugfixed Adam according to Andrej
+optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4)
+
+for i in range(50):
+    optimizer.zero_grad()
+    logits, loss = model(x, y)
+    loss.backward()
+    optimizer.step()
+    print(f"Step: {i}, Loss: {loss.item()}")
 
 import sys; sys.exit(0)
 model.eval() # put model in eval mode, works for layers like: Dropout, BatchNorm, etc.
