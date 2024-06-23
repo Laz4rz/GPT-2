@@ -161,13 +161,7 @@ class GPT(nn.Module):
 # GPT.from_pretrained('gpt2') would be a way to instantiate a GPT model from a pre-trained checkpoint
 
 # init model
-if torch.cuda.is_available():
-    device = "cuda"
-elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-    device = "mps"
-else:
-    device = "cpu"
-device = "cpu" 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # model = GPT.from_pretrained('gpt2', verbose=False)
 model = GPT(GPTConfig()) # random model initialization, will still produce some readable sentence parts due to tokenizer construction
 print(f"Device: {device}")
