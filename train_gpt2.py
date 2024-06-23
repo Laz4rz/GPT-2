@@ -28,7 +28,7 @@ class CausalSelfAttention(nn.Module):
         # calculate q, k, v for all heads in batch and move head forward (to be the batch???)
         # nh is the number of heads, hs is the head size, C (number of channels) = nh * hs
         # in this GPT-2 (124M) model, nh = 12, hs = 64, so nh * hs = C = 768 channels in transformer
-        qkv = self.c_attn(x)
+        qkv = self.c_attn(x) # TODO: bias of self.c_attn.bias does not match
         q, k, v = qkv.split(self.n_embd, dim=2) # chech what it does, what are the shapes
         q = q.view(B, T, self.n_head, self.n_embd // self.n_head).transpose(1, 2) # (B, nh, T, hs)
         k = k.view(B, T, self.n_head, self.n_embd // self.n_head).transpose(1, 2)
@@ -130,7 +130,7 @@ class GPT(nn.Module):
         model   = GPT(config)
         sd      = model.state_dict()
         sd_keys = sd.keys()
-        sd_keys = [k for k in sd_keys if "attn.bias" not in k] # remove attn.bias buffer, we omit buffers for some reason i dont know why, it doesnt even matter how hardy I try
+        sd_keys = [k for k in sd_keys if ".attn.bias" not in k] # remove attn.bias buffer, we omit buffers for some reason i dont know why, it doesnt even matter how hardy I try
 
         # load huggingface model weights
         hf_model = GPT2LMHeadModel.from_pretrained(model_type)
@@ -138,8 +138,8 @@ class GPT(nn.Module):
 
         # choose, match and copy weights
         sd_keys_hf = sd_hf.keys()
-        sd_keys_hf = [k for k in sd_keys_hf if "attn.bias" not in k and "attn.masked_bias" not in k] # remove attn.bias and attn.masked_bias
-        transposed = ["attn.c_attn.weight", "attn.c_proj.weight", "mlp.c_fc.weight", "mlp.c_proj.weight"]
+        sd_keys_hf = [k for k in sd_keys_hf if ".attn.bias" not in k and "attn.masked_bias" not in k] # remove attn.bias and attn.masked_bias
+        transposed = [".attn.c_attn.weight", ".attn.c_proj.weight", ".mlp.c_fc.weight", ".mlp.c_proj.weight"]
         # some of the original weights use Conv1D, but we want to load vanilla
         # which is why we need to transpose some of the weights
         assert len(sd_keys) == len(sd_keys_hf), f"mismatch in number of keys: custom {len(sd_keys)} vs hf {len(sd_keys_hf)}"
@@ -162,7 +162,7 @@ class GPT(nn.Module):
 
 # init model
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model = GPT.from_pretrained('gpt2')
+model = GPT.from_pretrained('gpt2', verbose=False)
 print(f"Device: {device}")
 # print(model) # buffers are not visible here, to show them we need to look at model.buffers()
 print("Model loaded successfully!")

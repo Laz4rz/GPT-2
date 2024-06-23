@@ -30,6 +30,8 @@ Following master Karpathy with GPT-2 implementation and training
 ## My implementation fuckups
 
 #### Low quality generations with raw hf weights cloned (bc5e9a1d)
+*Cautionary tale on what neither GPT-4o, nor Claude 3.5 Sonnet could help me with. Both models failed in what ultimately boiled down to string comparison. Even though both were specifically asked to debug a potential typo.*
+
 For whatever reason my generations looks like:
 
 ```
@@ -58,7 +60,7 @@ Instead of:
 I want to know more about how languages work and why they could be used.
 ```
 
-After a lot of breakpoints and print(x), print(x.shape) it turns out my `h[x].c_attn.bias` were copied in the wrong order (or so I thought), which is weird, considering that the weights look to be copied correctly. 
+After a lot of breakpoints and print(x), print(x.shape) it turns out my `h[x].c_attn.bias` were copied in the wrong order (or so I thought), which is weird, considering that the weights seem to be copied correctly. 
 
 Correct bias for `h[0].c_attn.bias`:
 
@@ -93,3 +95,27 @@ tensor([-0.2222,  0.0549,  0.0331,  ..., -0.0289, -0.0241,  0.0063])
 
 So what the hell is going on you may ask? How could you possibly put the wrong bias in out of the thin air? Naturally I went on looking at all the bias tensors in the original GPT2 state_dict -- I obviously had to mismatch the bias with the key. Imagine my surprise when I learned that this c_attn bias does not correspond to ANY of the biases in the original weights...
 
+So I went down the weights copying hole. And who would've thought. I tried to be smarter than I am, and it backfired, as it always does. Take a close look at:
+
+My filtering:
+
+```
+sd_keys_hf = [k for k in sd_keys_hf if "attn.bias" not in k and "attn.masked_bias" not in k]
+```
+
+Correct filtering:
+
+```
+sd_keys_hf = [k for k in sd_keys_hf if not k.endswith('.attn.masked_bias')]
+sd_keys_hf = [k for k in sd_keys_hf if not k.endswith('.attn.bias')]
+```
+
+My `.c_attn.bias` was simply initiated randomly, because I filtered additional keys. 
+
+How to fix this?
+
+```
+"attn.bias" -> ".attn.bias"
+```
+
+Or just listen to people smarter than you and don't take shortcuts as I wanted to. Also, never take LLM debugging for granted.
