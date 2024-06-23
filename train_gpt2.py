@@ -1,6 +1,7 @@
 import math
 from dataclasses import dataclass
 
+import tiktoken
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
@@ -27,7 +28,7 @@ class CausalSelfAttention(nn.Module):
         # calculate q, k, v for all heads in batch and move head forward (to be the batch???)
         # nh is the number of heads, hs is the head size, C (number of channels) = nh * hs
         # in this GPT-2 (124M) model, nh = 12, hs = 64, so nh * hs = C = 768 channels in transformer
-        qkv = self.attn(x)
+        qkv = self.c_attn(x)
         q, k, v = qkv.split(self.n_embd, dim=2) # chech what it does, what are the shapes
         q = q.view(B, T, self.n_head, self.n_embd // self.n_head).transpose(1, 2) # (B, nh, T, hs)
         k = k.view(B, T, self.n_head, self.n_embd // self.n_head).transpose(1, 2)
@@ -40,7 +41,7 @@ class CausalSelfAttention(nn.Module):
         y = y.transpose(1, 2).contiguous().view(B, T, C) # re-assemble all head outputs side by side
         # contiguous() places the tensor in a contiguous block of memory, used after transpose, view, etc.
         # output projection
-        y = self.proj(y)
+        y = self.c_proj(y)
         return y
 
 class MLP(nn.Module):
@@ -73,17 +74,18 @@ class Block(nn.Module):
 
 @dataclass
 class GPTConfig:
-    block_size: int = 256
-    vocab_size: int = 65
-    n_layer: int = 8
-    n_head: int = 8
-    n_embd: int = 384
+    block_size: int = 1024  # max sequence length
+    vocab_size: int = 50257 # number of tokens, 50k merges BPE, 256 bytes tokens, 1 <|endoftext|>
+    n_layer: int = 12       # number of layers
+    n_head: int = 12        # number of heads
+    n_embd: int = 768       # embedding dimension
 
 
 class GPT(nn.Module):
 
     def __init__(self, config):
         super().__init__()
+
         self.config = config
 
         self.transformer = nn.ModuleDict(dict(
@@ -93,6 +95,19 @@ class GPT(nn.Module):
             ln_f = nn.LayerNorm(config.n_embd),
         ))
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False) # GPT uses no bias
+
+    def forward(self, idx): # why is this called idx dunno 
+        B, T = idx.size()
+        assert T < self.config.block_size, f"sequence length ({T=}) is greater than the pretrained position embeddings value ({self.config.block_size=})"
+        pos = torch.arange(0, T, dtype=torch.long, device=idx.device)
+        pos_emb = self.transformer.wpe(pos) # positional embeddings (T, n_emb)
+        tok_emb = self.transformer.wte(idx) # token embeddings (batch size, seq length, n_emb)
+        x = pos_emb + tok_emb               # superposition of positions and token embeddings
+        for block in self.transformer.h:    # pass sequentially through all attention blocks
+            x = block(x)
+        x = self.transformer.ln_f(x)        # pass through layernorm
+        x = self.lm_head(x)                 # pass through projection from high-dim (latent?) to vocab_size
+        return x                            # return logits
 
     @classmethod
     def from_pretrained(cls, model_type, verbose=False):
@@ -115,7 +130,7 @@ class GPT(nn.Module):
         model   = GPT(config)
         sd      = model.state_dict()
         sd_keys = sd.keys()
-        sd_keys = [k for k in sd_keys if "attn.bias" not in k] # remove attn.bias buffer
+        sd_keys = [k for k in sd_keys if "attn.bias" not in k] # remove attn.bias buffer, we omit buffers for some reason i dont know why, it doesnt even matter how hardy I try
 
         # load huggingface model weights
         hf_model = GPT2LMHeadModel.from_pretrained(model_type)
@@ -145,6 +160,41 @@ class GPT(nn.Module):
 # class method allows constructing a class through a class method call
 # GPT.from_pretrained('gpt2') would be a way to instantiate a GPT model from a pre-trained checkpoint
 
+# init model
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = GPT.from_pretrained('gpt2')
-print(model) # buffers are not visible here, to show them we need to look at model.buffers()
+print(f"Device: {device}")
+# print(model) # buffers are not visible here, to show them we need to look at model.buffers()
 print("Model loaded successfully!")
+
+model.eval() # put model in eval mode, works for layers like: Dropout, BatchNorm, etc.
+model.to(device)
+
+num_return_sequences = 5
+max_length = 30
+
+# encode
+enc = tiktoken.get_encoding("gpt2")
+tokens = enc.encode("Hello, I'm a language model,")
+tokens = torch.tensor(tokens, dtype=torch.long) # (8,)
+tokens = tokens.unsqueeze(0).repeat(num_return_sequences, 1) # (5, 8)
+x = tokens.to(device)
+
+# generating loop
+torch.manual_seed(42)
+torch.cuda.manual_seed(42)
+while x.size(1) < max_length:
+    with torch.no_grad():
+        logits = model(x)                   # get logits from non-grad forward pass
+        logits = logits[:, -1, :]           # take last logits from each batch
+        probs  = F.softmax(logits, dim=-1)  # get probabilities from logits
+        topk_probs, topk_indices = torch.topk(probs, 50, dim=-1)    # get top50 probs and its indices
+        ix      = torch.multinomial(topk_probs, 1)   # get random idx from topk distribution (not really dist, since sum=/=1, but yknow)
+        xcol    = torch.gather(topk_indices, -1, ix) # get tokens corresponding to sampled ixs
+        x       = torch.cat((x, xcol), dim=1)        # concat previous tokens, with sampled ixs tokens
+         
+# decode generated
+for i in range(num_return_sequences):
+    tokens  = x[i, :max_length].tolist()
+    decoded = enc.decode(tokens)
+    print(f"> {decoded}") 
