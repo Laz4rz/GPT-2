@@ -29,14 +29,15 @@ and 2. view will return a tensor using the same memory area as the viewed object
 - lm_head and wte weights are **the same** it comes from the 2016 paper [Using the Output Embedding to Improve Language Models](https://arxiv.org/pdf/1608.05859), which argues that it significantly improves performance and the intuitive explanation is that *"for the input embedding, we would like the
 network to react similarly to synonyms, while in
 the output embedding, we would like the scores
-of words that are interchangeable to be similar"*
+of words that are interchangeable to be similar"*, makes us save ~30% of model parameters, banger
 
 
-## my whims
+## My whims
 - train with rope
 - play with params on small models
 - play with other activation functions
 - learn more about layernotexts and sparsity
+- set tokens not seen in the input.txt to -inf from start
 
 ## My implementation fuckups
 

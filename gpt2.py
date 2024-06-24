@@ -96,6 +96,10 @@ class GPT(nn.Module):
         ))
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False) # GPT uses no bias
 
+        # weights sharing (https://arxiv.org/pdf/1608.05859)
+        self.transformer.wte.weight = self.lm_head.weight
+
+
     def forward(self, idx, targets=None): # why is this called idx dunno 
         B, T = idx.size()
         assert T < self.config.block_size, f"sequence length ({T=}) is greater than the pretrained position embeddings value ({self.config.block_size=})"
