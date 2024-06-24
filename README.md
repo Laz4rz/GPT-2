@@ -24,6 +24,10 @@ Following master Karpathy with GPT-2 implementation and training
   - the accumulated std of layers stacked in the residual stream is kept at 1, so that the growth of activations after a forward pass (not totally clear how to intuitively see that) is controlled
   ![alt text](image-1.png)  
   - when using `torch.manual_seed` for different devices -- it really works and gives same results
+  - Andrej uses `import code; code.interact(local=locals())` for drop-in debugs
+  - int8 are used in inference, not training due to the uniformity of their spacing, i honestly have no idea what that means, probably the most no idea of all the stuff i was unsure about in this repo, whats more is floats are needed so that we match the weights and activations distributions -- what the hell does that mean, i really dont know yet (its midnight, maybe i know but not now)
+  - changing dtype impacts 3 different factors: 1. FLOPS, 2. VRAM, 3. Memory bandwidth speed, for example A100 80GB for Float16 is (312 TFLOPS, 80GB, ~2000GB/s), this is great to learn more: [A100 whitepaper](https://images.nvidia.com/aem-dam/en-zz/Solutions/data-center/nvidia-ampere-architecture-whitepaper.pdf)
+  - mps is very sensitive to other workload, I was getting 2-3k tokens per sec, as soon as I just swiped to my left screen, it dropped to 300 toks/sec
 
 ## Other quick wisdom
 - torch buffers are basically non-learnable model tensors

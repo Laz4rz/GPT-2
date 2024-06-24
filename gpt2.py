@@ -119,7 +119,7 @@ class GPT(nn.Module):
 
     def forward(self, idx, targets=None): # why is this called idx dunno 
         B, T = idx.size()
-        assert T < self.config.block_size, f"sequence length ({T=}) is greater than the pretrained position embeddings value ({self.config.block_size=})"
+        assert T <= self.config.block_size, f"sequence length ({T=}) is greater than the pretrained position embeddings value ({self.config.block_size=})"
         pos = torch.arange(0, T, dtype=torch.long, device=idx.device)
         pos_emb = self.transformer.wpe(pos) # positional embeddings (T, n_emb)
         tok_emb = self.transformer.wte(idx) # token embeddings (batch size, seq length, n_emb)

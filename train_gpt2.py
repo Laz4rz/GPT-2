@@ -55,7 +55,7 @@ elif device == "mps":
 print("Torch seed is", seed)
 
 # dataloader
-train_loader = DataLoaderLite(4, 32)
+train_loader = DataLoaderLite(16, 256)
 
 # init model
 model = GPT(GPTConfig()) # random model initialization, will still produce some readable sentence parts due to tokenizer construction
@@ -66,16 +66,20 @@ print("Model initialized successfully!")
 # apparently AdamW is bugfixed Adam according to Andrej
 optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4)
 
-start = datetime.now()
+start_total = datetime.now()
 
 for i in range(50):
+    start = datetime.now()
     x, y = train_loader.next_batch()
     x, y = x.to(device), y.to(device)
     optimizer.zero_grad()
     logits, loss = model(x, y)
     loss.backward()
     optimizer.step()
-    print(f"Step: {i}, Loss: {loss.item()}")
+    torch.mps.synchronize() # useful for per epoch timings, only lets cpu continue after gpu finishes work
+    end = datetime.now()
+    tokens_per_sec = (train_loader.B * train_loader.T) / (end-start).total_seconds()
+    print(f"Step: {i}, Loss: {loss.item():.6f}, Batch time: {end-start}, Tokens/sec: {tokens_per_sec:.2f}")
 
-end = datetime.now()
-print(f"Runtime {(end-start)} with device {device}")
+end_total = datetime.now()
+print(f"Runtime {(end_total-start_total)}, device {device}")
