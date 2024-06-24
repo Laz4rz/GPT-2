@@ -22,7 +22,7 @@ Following master Karpathy with GPT-2 implementation and training
   normally if one follows the Javier initialization, the std should be equal to $\frac{1}{\sqrt{\text{n}\textunderscore\text{module}\textunderscore\text{features}\textunderscore\text{incoming}}}$, the GPT2 paper roughly follows that, as $\frac{1}{\sqrt(768)}=0.036$ so its not too far from $0.02$
   - layernorm also could be initialized, but we leave it as default, which is scale 1 and offset 0
   - the accumulated std of layers stacked in the residual stream is kept at 1, so that the growth of activations after a forward pass (not totally clear how to intuitively see that) is controlled
-  ![alt text](image-2.png)
+  ![alt text](image-1.png)  
   - when using `torch.manual_seed` for different devices -- it really works and gives same results
 
 ## Other quick wisdom
