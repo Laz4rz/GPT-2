@@ -42,16 +42,25 @@ class DataLoaderLite:
 
 # infer device type
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-device = "cpu"
+device = "mps"
 print(f"Device: {device}")
+
+# reproducibility
+seed = 1337
+torch.manual_seed(seed)
+if device == "cuda":
+    torch.cuda.manual_seed(seed)
+elif device == "mps":
+    torch.mps.manual_seed(seed)
+print("Torch seed is", seed)
 
 # dataloader
 train_loader = DataLoaderLite(4, 32)
 
 # init model
-model  = GPT(GPTConfig()) # random model initialization, will still produce some readable sentence parts due to tokenizer construction
+model = GPT(GPTConfig()) # random model initialization, will still produce some readable sentence parts due to tokenizer construction
 model.to(device)
-print("Model loaded successfully!")
+print("Model initialized successfully!")
 
 # get logits
 # apparently AdamW is bugfixed Adam according to Andrej
