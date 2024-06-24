@@ -110,7 +110,7 @@ class GPT(nn.Module):
             std = 0.02
             # the scaled initialization of stacked residual layers
             if hasattr(module, "NANO_GPT_SCALE_INIT"):
-                std = (2 * self.config.n_layer) ** (-0.5) # times 2 due to two residual concats for each block made by n_layers (i guess) (yeah literally confirmed 10 secs later)
+                std *= (2 * self.config.n_layer) ** (-0.5) # times 2 due to two residual concats for each block made by n_layers (i guess) (yeah literally confirmed 10 secs later)
             torch.nn.init.normal_(module.weight, mean=0.0, std=std)
             if module.bias is not None:
                 torch.nn.init.zeros_(module.bias)
