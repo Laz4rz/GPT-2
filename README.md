@@ -17,6 +17,11 @@ Following master Karpathy with GPT-2 implementation and training
   - layer notext was added after final self attention
   - h in module dict is the whole gray block
   - mlp is map, attention is reduce
+  - linear layers are initialized as normal(0, 0.02), with bias 0, embedding also as normal(0, 0.02), by default torch does not initialize bias as 0
+
+  normally if one follows the Javier initialization, the std should be equal to $\frac{1}{\sqrt{\text{n}\textunderscore\text{module}\textunderscore\text{features}\textunderscore\text{incoming}}}$, the GPT2 paper roughly follows that, as $\frac{1}{\sqrt(768)}=0.036$ so its not too far from $0.02$
+  - layernorm also could be initialized, but we leave it as default, which is scale 1 and offset 0
+
 
 ## Other quick wisdom
 - torch buffers are basically non-learnable model tensors
@@ -30,6 +35,7 @@ and 2. view will return a tensor using the same memory area as the viewed object
 network to react similarly to synonyms, while in
 the output embedding, we would like the scores
 of words that are interchangeable to be similar"*, makes us save ~30% of model parameters, banger
+- `apply` on `nn.module` subclass is going to apply its argument to all subclass modules (i think only modules, not sure tho)
 
 
 ## My whims
