@@ -17,17 +17,20 @@ Following master Karpathy with GPT-2 implementation and training
   - layer notext was added after final self attention
   - h in module dict is the whole gray block
   - mlp is map, attention is reduce
-  - linear layers are initialized as normal(0, 0.02), with bias 0, embedding also as normal(0, 0.02), by default torch does not initialize bias as 0
-  normally if one follows the Javier initialization, the std should be equal to $\frac{1}{\sqrt{\text{n}\textunderscore\text{module}\textunderscore\text{features}\textunderscore\text{incoming}}}$, the GPT2 paper roughly follows that, as $\frac{1}{\sqrt(768)}=0.036$ so its not too far from $0.02$
+  - linear layers are initialized as normal(0, 0.02), with bias 0, embedding also as normal(0, 0.02), by default torch does not initialize bias as 0. Normally if one follows the Javier initialization, the std should be equal to $\frac{1}{\sqrt{\text{n}\textunderscore\text{module}\textunderscore\text{features}\textunderscore\text{incoming}}}$, the GPT2 paper roughly follows that, as $\frac{1}{\sqrt(768)}=0.036$ so its not too far from $0.02$
   - layernorm also could be initialized, but we leave it as default, which is scale 1 and offset 0
   - the accumulated std of layers stacked in the residual stream is kept at 1, so that the growth of activations after a forward pass (not totally clear how to intuitively see that) is controlled
-  ![alt text](image-1.png)  
+  ![alt text](image-1.png)
+  Which looks a lot like the [growth of variance in random walk](https://stats.stackexchange.com/questions/159650/why-does-the-variance-of-the-random-walk-increase)
   - when using `torch.manual_seed` for different devices -- it really works and gives same results
   - Andrej uses `import code; code.interact(local=locals())` for drop-in debugs
   - int8 are used in inference, not training due to the uniformity of their spacing, i honestly have no idea what that means, probably the most no idea of all the stuff i was unsure about in this repo, whats more is floats are needed so that we match the weights and activations distributions -- what the hell does that mean, i really dont know yet (its midnight, maybe i know but not now)
   - changing dtype impacts 3 different factors: 1. FLOPS, 2. VRAM, 3. Memory bandwidth speed, for example A100 80GB for Float16 is (312 TFLOPS, 80GB, ~2000GB/s), this is great to learn more: [A100 whitepaper](https://images.nvidia.com/aem-dam/en-zz/Solutions/data-center/nvidia-ampere-architecture-whitepaper.pdf)
   - mps is very (VERY) sensitive to other workload, I was getting 2-3k tokens per sec in training, as soon as I just swiped to my left screen, it dropped to 300 toks/sec
-  - 
+  - Float32 vs TF32 (and others):
+  ![alt text](image-2.png)
+    Intuitively: exponent spans the range, while mantissa allows more finegrained placement of numbers on this range. In TF32 mantissa is crushed to 10 bits (from 23), I think MPS supports BFloat16, and not TF32 [MPS shader dtypes](https://developer.apple.com/documentation/metalperformanceshaders/mpsdatatype) is the only documentation of dtypes I could quickly find. -- coming back to this: there is a quick function in `scratch.py` to check dtypes available on the device, and it looks like MPS does not support `torch.bfloat16`, but CPU does
+  - FP32, TF32, and BF16 span the same range, but gradually lower precision, FP16 spans smaller range of number, which is why it cant be used interchangebly with the other 3 -- we cant represent all the same numbers so we would have to scale gradients etc. Look [here](https://pytorch.org/tutorials/recipes/recipes/amp_recipe.html) for a good read up on automatic mixed precision use in pytorch. It basically says that if we dont change the range of dtype used, then we should use `autocast` as a context manager for a forward pass and loss calculation (and only this! without optimizer step etc.), it also says that we should not be casting manually any tensors to half (FP16) or BF16. What Im unsure here is: why using FP16 would need to use gradient scalars? Couldnt we calculate gradient with FP16 as well, so everything is in the same range from the start, and nothing needs to be scaled?
 
 ## Other quick wisdom
 - torch buffers are basically non-learnable model tensors
@@ -42,18 +45,17 @@ network to react similarly to synonyms, while in
 the output embedding, we would like the scores
 of words that are interchangeable to be similar"*, makes us save ~30% of model parameters, banger
 - `apply` on `nn.module` subclass is going to apply its argument to all subclass modules (i think only modules, not sure tho)
-- Float32 vs TF32 (and others):
-![alt text](image-2.png)
-  Intuitively: exponent spans the range, while mantissa allows more finegrained placement of numbers on this range. In TF32 mantissa is crushed to 10 bits (from 23), I think MPS supports BFloat16, and not TF32 [MPS shader dtypes](https://developer.apple.com/documentation/metalperformanceshaders/mpsdatatype) is the only documentation of dtypes I could quickly find
-- I did not observe any speed up from using `torch.set_float32_matmul_precision("high")` on MPS (10 batches of B=16, T=256)
+- I did not observe any speed up from using `torch.set_float32_matmul_precision("high")` on MPS (10 batches of B=16, T=256) -- checked later and MPS doesnt support even bfloat16, but when run with CPU it seems to be supported
+  ```
   With lower precision:
     Mean Batch time: 1.82s
     Mean tokens/sec: 2265.09
   Without lower precision:
     Mean Batch time: 1.74s
     Mean tokens/sec: 2400.92
+  ```
   A100 whitepaper it should 8x, but in Andrej's case it only 3x, in mine... yeah you can see
-
+- `torch.cuda.max_memory_allocated` looks hella usefull for when you cant pinpoint the vram usage with nvidia-smi/nvtop, and you have this tingling feeling that you should look at max allocated memory cause it feels too much, this gives max allocated memory since the start of the program
 
 ## My whims
 - train with rope
@@ -61,6 +63,10 @@ of words that are interchangeable to be similar"*, makes us save ~30% of model p
 - play with other activation functions
 - learn more about layernotexts and sparsity
 - set tokens not seen in the input.txt to -inf from start
+
+## Questions
+- Why autocast to FP16 would require gradient scaling? Can't we calculate gradients with FP16 to begin with? Therefore all the tensors would be in the same number range, and I guess there wouldn't be a need to scale anything?
+- 
 
 ## My implementation fuckups
 

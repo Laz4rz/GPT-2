@@ -1,5 +1,7 @@
 from gpt2 import GPT, GPTConfig
+from scratch import check_dtypes
 
+import sys
 import tiktoken
 import torch
 import torch.nn as nn
@@ -42,7 +44,7 @@ class DataLoaderLite:
 
 # infer device type
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-device = "mps"
+# device = "mps" 
 print(f"Device: {device}")
 
 # reproducibility
@@ -75,7 +77,8 @@ for i in range(10):
     x, y = train_loader.next_batch()
     x, y = x.to(device), y.to(device)
     optimizer.zero_grad()
-    logits, loss = model(x, y)
+    with torch.autocast(device_type=device, dtype=torch.float16):
+        logits, loss = model(x, y)
     loss.backward()
     optimizer.step()
     torch.mps.synchronize() # useful for per epoch timings, only lets cpu continue after gpu finishes work
