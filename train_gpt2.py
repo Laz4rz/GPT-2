@@ -67,9 +67,11 @@ print("Model initialized successfully!")
 optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4)
 
 start_total = datetime.now()
+metrics = dict(loss=[], tokens_per_sec=[], batch_time=[])
 
-for i in range(50):
+for i in range(10):
     start = datetime.now()
+
     x, y = train_loader.next_batch()
     x, y = x.to(device), y.to(device)
     optimizer.zero_grad()
@@ -77,9 +79,17 @@ for i in range(50):
     loss.backward()
     optimizer.step()
     torch.mps.synchronize() # useful for per epoch timings, only lets cpu continue after gpu finishes work
+    
     end = datetime.now()
     tokens_per_sec = (train_loader.B * train_loader.T) / (end-start).total_seconds()
-    print(f"Step: {i}, Loss: {loss.item():.6f}, Batch time: {end-start}, Tokens/sec: {tokens_per_sec:.2f}")
+    loss = loss.item()
+    batch_time = end-start
+    metrics["loss"].append(loss), metrics["tokens_per_sec"].append(tokens_per_sec), metrics["batch_time"].append(batch_time)
+    print(f"Step: {i}, Loss: {loss:.6f}, Batch time: {batch_time}, Tokens/sec: {tokens_per_sec:.2f}")
 
 end_total = datetime.now()
-print(f"Runtime {(end_total-start_total)}, device {device}")
+
+mean_batch_time = sum(map(lambda x: x.total_seconds(), metrics["batch_time"])) / len(metrics["batch_time"])
+mean_tokens_per_sec = sum(metrics["tokens_per_sec"]) / len(metrics["tokens_per_sec"])
+print(f"Runtime: {(end_total-start_total)}\nDevice: {device}\nMean Batch time: {mean_batch_time:.2f}s\nMean tokens/sec: {mean_tokens_per_sec:.2f}")
+

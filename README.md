@@ -18,7 +18,6 @@ Following master Karpathy with GPT-2 implementation and training
   - h in module dict is the whole gray block
   - mlp is map, attention is reduce
   - linear layers are initialized as normal(0, 0.02), with bias 0, embedding also as normal(0, 0.02), by default torch does not initialize bias as 0
-
   normally if one follows the Javier initialization, the std should be equal to $\frac{1}{\sqrt{\text{n}\textunderscore\text{module}\textunderscore\text{features}\textunderscore\text{incoming}}}$, the GPT2 paper roughly follows that, as $\frac{1}{\sqrt(768)}=0.036$ so its not too far from $0.02$
   - layernorm also could be initialized, but we leave it as default, which is scale 1 and offset 0
   - the accumulated std of layers stacked in the residual stream is kept at 1, so that the growth of activations after a forward pass (not totally clear how to intuitively see that) is controlled
@@ -27,7 +26,8 @@ Following master Karpathy with GPT-2 implementation and training
   - Andrej uses `import code; code.interact(local=locals())` for drop-in debugs
   - int8 are used in inference, not training due to the uniformity of their spacing, i honestly have no idea what that means, probably the most no idea of all the stuff i was unsure about in this repo, whats more is floats are needed so that we match the weights and activations distributions -- what the hell does that mean, i really dont know yet (its midnight, maybe i know but not now)
   - changing dtype impacts 3 different factors: 1. FLOPS, 2. VRAM, 3. Memory bandwidth speed, for example A100 80GB for Float16 is (312 TFLOPS, 80GB, ~2000GB/s), this is great to learn more: [A100 whitepaper](https://images.nvidia.com/aem-dam/en-zz/Solutions/data-center/nvidia-ampere-architecture-whitepaper.pdf)
-  - mps is very sensitive to other workload, I was getting 2-3k tokens per sec, as soon as I just swiped to my left screen, it dropped to 300 toks/sec
+  - mps is very (VERY) sensitive to other workload, I was getting 2-3k tokens per sec in training, as soon as I just swiped to my left screen, it dropped to 300 toks/sec
+  - 
 
 ## Other quick wisdom
 - torch buffers are basically non-learnable model tensors
@@ -42,6 +42,17 @@ network to react similarly to synonyms, while in
 the output embedding, we would like the scores
 of words that are interchangeable to be similar"*, makes us save ~30% of model parameters, banger
 - `apply` on `nn.module` subclass is going to apply its argument to all subclass modules (i think only modules, not sure tho)
+- Float32 vs TF32 (and others):
+![alt text](image-2.png)
+  Intuitively: exponent spans the range, while mantissa allows more finegrained placement of numbers on this range. In TF32 mantissa is crushed to 10 bits (from 23), I think MPS supports BFloat16, and not TF32 [MPS shader dtypes](https://developer.apple.com/documentation/metalperformanceshaders/mpsdatatype) is the only documentation of dtypes I could quickly find
+- I did not observe any speed up from using `torch.set_float32_matmul_precision("high")` on MPS (10 batches of B=16, T=256)
+  With lower precision:
+    Mean Batch time: 1.82s
+    Mean tokens/sec: 2265.09
+  Without lower precision:
+    Mean Batch time: 1.74s
+    Mean tokens/sec: 2400.92
+  A100 whitepaper it should 8x, but in Andrej's case it only 3x, in mine... yeah you can see
 
 
 ## My whims
@@ -143,3 +154,5 @@ How to fix this?
 ```
 
 Or just listen to people smarter than you and don't take shortcuts as I wanted to. Also, never take LLM debugging for granted.
+
+#### MPS is slower in slower in inference than CPU, but ~4x faster in training.. hmmm...

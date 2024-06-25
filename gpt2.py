@@ -85,7 +85,7 @@ class GPTConfig:
 
 class GPT(nn.Module):
 
-    def __init__(self, config):
+    def __init__(self, config, lower_matmul_precision=True):
         super().__init__()
 
         self.config = config
@@ -103,6 +103,11 @@ class GPT(nn.Module):
         
         # init params with specific parameters
         self.apply(self._init_weights)
+
+        # set dtype of matmul operation to TF32 (or treat F32 as sum of two BF16, if none available fallsback to F32)
+        # if I understood correctly, on MPS it will use the BFloat16 solution, TF32 is not supported
+        if lower_matmul_precision:
+            torch.set_float32_matmul_precision("high")
 
     # parameters specific to GPT2/GPT3 papers
     def _init_weights(self, module):
