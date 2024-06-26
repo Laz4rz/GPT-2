@@ -44,7 +44,7 @@ class DataLoaderLite:
 
 # infer device type
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-# device = "mps" 
+# device = torch.device("mps")
 print(f"Device: {device}")
 
 # reproducibility
@@ -62,6 +62,7 @@ train_loader = DataLoaderLite(16, 256)
 # init model
 model = GPT(GPTConfig()) # random model initialization, will still produce some readable sentence parts due to tokenizer construction
 model.to(device)
+# model = torch.compile(model) if device.type == "cuda" else model # cpu compile is stuck on MBP
 print("Model initialized successfully!")
 
 # get logits
@@ -77,11 +78,11 @@ for i in range(10):
     x, y = train_loader.next_batch()
     x, y = x.to(device), y.to(device)
     optimizer.zero_grad()
-    with torch.autocast(device_type=device, dtype=torch.float16):
-        logits, loss = model(x, y)
+    # with torch.autocast(device_type=device.type, dtype=torch.bfloat16):
+    logits, loss = model(x, y)
     loss.backward()
     optimizer.step()
-    torch.mps.synchronize() # useful for per epoch timings, only lets cpu continue after gpu finishes work
+    # torch.mps.synchronize() # useful for per epoch timings, only lets cpu continue after gpu finishes work
     
     end = datetime.now()
     tokens_per_sec = (train_loader.B * train_loader.T) / (end-start).total_seconds()

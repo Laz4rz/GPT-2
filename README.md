@@ -31,6 +31,12 @@ Following master Karpathy with GPT-2 implementation and training
   ![alt text](image-2.png)
     Intuitively: exponent spans the range, while mantissa allows more finegrained placement of numbers on this range. In TF32 mantissa is crushed to 10 bits (from 23), I think MPS supports BFloat16, and not TF32 [MPS shader dtypes](https://developer.apple.com/documentation/metalperformanceshaders/mpsdatatype) is the only documentation of dtypes I could quickly find. -- coming back to this: there is a quick function in `scratch.py` to check dtypes available on the device, and it looks like MPS does not support `torch.bfloat16`, but CPU does
   - FP32, TF32, and BF16 span the same range, but gradually lower precision, FP16 spans smaller range of number, which is why it cant be used interchangebly with the other 3 -- we cant represent all the same numbers so we would have to scale gradients etc. Look [here](https://pytorch.org/tutorials/recipes/recipes/amp_recipe.html) for a good read up on automatic mixed precision use in pytorch. It basically says that if we dont change the range of dtype used, then we should use `autocast` as a context manager for a forward pass and loss calculation (and only this! without optimizer step etc.), it also says that we should not be casting manually any tensors to half (FP16) or BF16. What Im unsure here is: why using FP16 would need to use gradient scalars? Couldnt we calculate gradient with FP16 as well, so everything is in the same range from the start, and nothing needs to be scaled?
+  - Only some parts of the model are impacted [autocast docs](https://pytorch.org/docs/stable/amp.html#cpu-ops-that-can-autocast-to-bfloat16), as some operations are more sensitive to precision changes and should not be automaticaly downcasted (cant be done safely for general case) ie softmax, layernorms, etc
+  - `torch.compile` does kernel fusion on elementwise operations, reducing the number of trips the data takes between the GPU and HBM (probably does more things), `torch.compile` in general reduces python overhead and gpu read/writes
+  ![alt text](image-3.png)
+  ![alt text](image-4.png)
+  Not only the CPU <-> GPU transfer is important. Also the speed and number of I/Os between SRAM and HBM need to be tracked, as they can often cause a bottleneck. Kernel fusions are especially useful for this, as they reduce the number of SRAM <-> HBM transfers.
+  - if `autocast` throws device error -- make sure you pass a device string, not device object ie if you have something like `torch.device("cuda")`, you want to pass it as `with torch.autocast(device_type=device.type, ...` 
 
 ## Other quick wisdom
 - torch buffers are basically non-learnable model tensors
@@ -56,6 +62,7 @@ of words that are interchangeable to be similar"*, makes us save ~30% of model p
   ```
   A100 whitepaper it should 8x, but in Andrej's case it only 3x, in mine... yeah you can see
 - `torch.cuda.max_memory_allocated` looks hella usefull for when you cant pinpoint the vram usage with nvidia-smi/nvtop, and you have this tingling feeling that you should look at max allocated memory cause it feels too much, this gives max allocated memory since the start of the program
+- both `torch.compile` and `torch.autocast` are unusable for device "mps" and M series macbooks (or at least i couldnt make them run without significant effort), additionaly `autocast` works really bad with device "cpu", almost freezing the program, `compile` runs, but performance is slightly worse compared to non-compiled one (650 tok/s vs 750)
 
 ## My whims
 - train with rope
@@ -162,3 +169,21 @@ How to fix this?
 Or just listen to people smarter than you and don't take shortcuts as I wanted to. Also, never take LLM debugging for granted.
 
 #### MPS is slower in slower in inference than CPU, but ~4x faster in training.. hmmm...
+
+I will get to the bottom of that.
+
+#### Torch compile problems on MPS
+
+```
+OpenMP support not found. Please try one of the following solutions:
+(1) Set the `CXX` environment variable to a compiler other than Apple clang++/g++ that has builtin OpenMP support;
+(2) install OpenMP via conda: `conda install llvm-openmp`;
+(3) install libomp via brew: `brew install libomp`;
+(4) manually setup OpenMP and set the `OMP_PREFIX` environment variable to point to a path with `include/omp.h` under it.
+```
+
+I did 1., which resulted in the problem disappearing, but now the compilation seems to be stuck. Program is non-responsive. 
+
+Wait, maybe just REALLYYYY slow? Interrupted two times and different calls were printed. 
+
+Ok nvm -- the thing that does not work on M series MBP I'm currently writing this is `autocast` (or probably is really damn slow)

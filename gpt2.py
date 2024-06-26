@@ -7,6 +7,10 @@ import torch.nn as nn
 from torch.nn import functional as F
 
 
+class TanhGELU(nn.Module):
+    def forward(self, x):
+        return 0.5 * x * (1 + torch.tanh(math.sqrt(2 / math.pi) * (x + 0.044715 * x**3)))
+
 class CausalSelfAttention(nn.Module):
     def __init__(self, config):
         super().__init__()
