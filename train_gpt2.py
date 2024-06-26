@@ -60,7 +60,7 @@ print("Torch seed is", seed)
 train_loader = DataLoaderLite(16, 256)
 
 # init model
-model = GPT(GPTConfig()) # random model initialization, will still produce some readable sentence parts due to tokenizer construction
+model = GPT(GPTConfig(vocab_size=50304)) # random model initialization, will still produce some readable sentence parts due to tokenizer construction
 model.to(device)
 # model = torch.compile(model) if device.type == "cuda" else model # cpu compile is stuck on MBP
 print("Model initialized successfully!")

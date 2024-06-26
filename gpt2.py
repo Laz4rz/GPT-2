@@ -39,10 +39,16 @@ class CausalSelfAttention(nn.Module):
         k = k.view(B, T, self.n_head, self.n_embd // self.n_head).transpose(1, 2)
         v = v.view(B, T, self.n_head, self.n_embd // self.n_head).transpose(1, 2)
         # attention -- materialize the large (T, T) for all queries and keys
-        att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1))) # (B, nh, T, T)
-        att = att.masked_fill(self.bias[:, :, :T, :T] == 0, float('-inf'))
-        att = F.softmax(att, dim=-1)
-        y = att @ v # (B, nh, T, T) @ (B, nh, T, hs) -> (B, nh, T, hs)
+        
+        # raw attention calculatio
+        # att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1))) # (B, nh, T, T)
+        # att = att.masked_fill(self.bias[:, :, :T, :T] == 0, float('-inf'))
+        # att = F.softmax(att, dim=-1)
+        # y = att @ v # (B, nh, T, T) @ (B, nh, T, hs) -> (B, nh, T, hs)
+        
+        # flash attention calculation
+        y = F.scaled_dot_product_attention(q, k, v, is_causal=True)
+        
         y = y.transpose(1, 2).contiguous().view(B, T, C) # re-assemble all head outputs side by side
         # contiguous() places the tensor in a contiguous block of memory, used after transpose, view, etc.
         # output projection
