@@ -2,10 +2,36 @@ import math
 from dataclasses import dataclass
 
 import tiktoken
+import numpy as np
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
 
+
+class softmax(nn.Module):
+    def forward(self, x, exp_module=math):
+        d = 0
+        for i in range(len(x)):
+            d += exp_module.exp(x[i])
+        y = []
+        for i in range(len(x)):
+            y.append(exp_module.exp(x[i]) / d)
+        return torch.tensor(y)
+    
+class safe_softmax(nn.Module):
+    def forward(self, x, exp_module=math):
+        x = x - torch.max(x)
+        d = 0
+        for i in range(len(x)):
+            d += exp_module.exp(x[i])
+        y = []
+        for i in range(len(x)):
+            y.append(exp_module.exp(x[i]) / d)
+        return torch.tensor(y)
+    
+class online_softmax(nn.Module):
+    def forward(self, x, exp_module=math):
+        pass
 
 class TanhGELU(nn.Module):
     def forward(self, x):
