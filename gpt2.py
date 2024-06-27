@@ -8,7 +8,9 @@ import torch.nn as nn
 from torch.nn import functional as F
 
 
+# does 2 passes but it susceptible to overflow
 class softmax(nn.Module):
+    """Only handles flat input"""
     def forward(self, x, exp_module=math):
         d = 0
         for i in range(len(x)):
@@ -17,21 +19,57 @@ class softmax(nn.Module):
         for i in range(len(x)):
             y.append(exp_module.exp(x[i]) / d)
         return torch.tensor(y)
-    
+
+# is not susceptible to overflow, but does 3 passes (1 for max_x)
 class safe_softmax(nn.Module):
+    """Only handles flat input"""
     def forward(self, x, exp_module=math):
-        x = x - torch.max(x)
+        m = float("-inf")
+        for i in range(len(x)):
+            if x[i] > m:
+                m = x[i]
         d = 0
         for i in range(len(x)):
-            d += exp_module.exp(x[i])
+            d += exp_module.exp(x[i]-m)
         y = []
         for i in range(len(x)):
-            y.append(exp_module.exp(x[i]) / d)
+            y.append(exp_module.exp(x[i]-m) / d)
         return torch.tensor(y)
-    
-class online_softmax(nn.Module):
+
+# is not susceptible to overflow, by using additional computation
+# but reducing the number of data transfers, overall reducing
+# the runtime
+class online_safe_softmax(nn.Module):
+    """Only handles flat input"""
     def forward(self, x, exp_module=math):
-        pass
+        m0 = float("-inf")
+        d = 0 
+        for i in range(len(x)):
+            m1 = m0
+            if x[i] > m0:
+                m1 = m0
+                m0 = x[i]
+            d = d * exp_module.exp(m1 - m0) + exp_module.exp(x[i] - m0)
+        y = []
+        for i in range(len(x)):
+            y.append(exp_module.exp(x[i] - m0) / d)
+        return torch.tensor(y)
+
+class online_safe_softmax_list(nn.Module):
+    """Only handles flat input"""
+    def forward(self, x, exp_module=math):
+        m = [float("-inf")]
+        d = 0 
+        for i in range(len(x)):
+            if x[i] > m[-1]:
+                m.append(x[i])
+            else:
+                m.append(m[-1])
+            d = d * exp_module.exp(m[-2] - m[-1]) + exp_module.exp(x[i] - m[-1])
+        y = []
+        for i in range(len(x)):
+            y.append(exp_module.exp(x[i] - m[-1]) / d)
+        return torch.tensor(y)
 
 class TanhGELU(nn.Module):
     def forward(self, x):
