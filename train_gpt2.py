@@ -1,7 +1,7 @@
 from gpt2 import GPT, GPTConfig
 from scratch import check_dtypes
 
-import sys
+import math
 import tiktoken
 import torch
 import torch.nn as nn
@@ -65,14 +65,30 @@ model.to(device)
 # model = torch.compile(model) if device.type == "cuda" else model # cpu compile is stuck on MBP
 print("Model initialized successfully!")
 
+max_lr = 6e-4
+min_lr = max_lr * 0.1
+warmup_steps = 10
+max_steps = 12
+def get_lr(step):
+    # linear warmup
+    if step < warmup_steps:
+        return max_lr * (step + 1) / warmup_steps
+    # constat min lr for when cosine decay ends
+    if step > max_steps:
+        return min_lr
+    decay_ratio = (step - warmup_steps) / (max_steps - warmup_steps)
+    assert 0 <= decay_ratio <= 1
+    coeff = 0.5 * (1.0 + math.cos(math.pi + decay_ratio))
+    return min_lr + coeff * (max_lr - min_lr)
+
+
 # get logits
 # apparently AdamW is bugfixed Adam according to Andrej
-optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4)
+optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4, betas=(0.9, 0.95), eps=1e-8)
 
 start_total = datetime.now()
 metrics = dict(loss=[], tokens_per_sec=[], batch_time=[])
-
-for i in range(10):
+for step in range(max_steps):
     start = datetime.now()
 
     x, y = train_loader.next_batch()
@@ -81,6 +97,10 @@ for i in range(10):
     # with torch.autocast(device_type=device.type, dtype=torch.bfloat16):
     logits, loss = model(x, y)
     loss.backward()
+    lr = get_lr(step)
+    for param_group in optimizer.param_groups:
+        param_group["lr"] = lr
+    norm = nn.utils.clip_grad_norm_(model.parameters(), 1.0)
     optimizer.step()
     # torch.mps.synchronize() # useful for per epoch timings, only lets cpu continue after gpu finishes work
     
@@ -89,7 +109,7 @@ for i in range(10):
     loss = loss.item()
     batch_time = end-start
     metrics["loss"].append(loss), metrics["tokens_per_sec"].append(tokens_per_sec), metrics["batch_time"].append(batch_time)
-    print(f"Step: {i}, Loss: {loss:.6f}, Batch time: {batch_time}, Tokens/sec: {tokens_per_sec:.2f}")
+    print(f"Step: {step}, Loss: {loss:.6f}, Norm: {norm:.4f}, lr: {lr:.4e}, Batch time: {batch_time}, Tokens/sec: {tokens_per_sec:.2f}")
 
 end_total = datetime.now()
 

@@ -189,4 +189,4 @@ I did 1., which resulted in the problem disappearing, but now the compilation se
 
 Wait, maybe just REALLYYYY slow? Interrupted two times and different calls were printed. 
 
-Ok nvm -- the thing that does not work on M series MBP I'm currently writing this is `autocast` (or probably is really damn slow)
+Ok nvm -- the thing that does not work on M series MBP I'm currently writing this is `autocast` (or probably is really damn slow), also `torch.compile` works when device is cpu, but makes the batch runtime higher, so dont bother doing it for now.

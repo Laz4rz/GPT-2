@@ -55,6 +55,7 @@ class online_safe_softmax(nn.Module):
             y.append(exp_module.exp(x[i] - m0) / d)
         return torch.tensor(y)
 
+# online softmax again, but noob version using list appends
 class online_safe_softmax_list(nn.Module):
     """Only handles flat input"""
     def forward(self, x, exp_module=math):
