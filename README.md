@@ -39,6 +39,9 @@ Following master Karpathy with GPT-2 implementation and training
   - if `autocast` throws device error -- make sure you pass a device string, not device object ie if you have something like `torch.device("cuda")`, you want to pass it as `with torch.autocast(device_type=device.type, ...` 
   - Flash Attention is a kernel fusion operation. Why cant `torch.compile` do it then? Cause it demands an algorithmic rewrite of the attention mechanism. Even though Flash Attention is more computationaly costly, it needs less HBM/SRAM transfers, which turn out to be the cause of a big chunk of attention runtime. Therefore, by using more compute, we reduce data transfers, and save time overall. The main premise of Flash Attention is that the big attention matrix (T, T) of interaction between keys and queries is never materialized. [FlashAttention](https://arxiv.org/abs/2205.14135) and [FlashAttention2](https://arxiv.org/abs/2307.08691), and the main mechanism behind the way that Flash Attention works is the one of [partial softmax calculation mechanism](https://arxiv.org/abs/1805.02867). Flash Attention helps even on CPU, getting us from 776 tok/s -> 1154 tok/s.
   - Powers of 2 are really powerful. We probably all know, that basically everything inside of a computer is a power of 2. We want powers of 2. They need less edge cases, and usually do not have to be specially treated. We need them so bad that we go through the code looking for number that do not have a lot of powers of 2 and fix them, and that will yield big improvemtents. One of these numbers is the vocab_size=50257, we push it slightly to 50304, and it turns out we can divide it even by 128. This moves us from 776 tok/s -> 818 tok/s (No FlashA) -> 1191 tok/s (+FlashA). This functionally doesnt change anything. WTE layer is never indexed to these additional weights, as we simply dont have these tokens in the tokenizer, and the lm_head will assign some probabilities to these embeddings, and will have to drive them to -inf (cause theyre never going to appear, so their probability has to be 0), but that is not different from real tokens that may never appear, or appear really sporadically. 
+  - There is not really much to write about the learning rate and cosine decay. Basically if you see it for the first time, the idea is that learning rate is modulated, by some coefficient (the more scientific shit I read, the more I write like them -- this only means $lr \cdot coeff$). In this case the coefficient changes in 3 different ways, depending on where we are in the training: 1. It grows linearly, from some small value ie. $0.1 \cdot lr$, to $lr$, 2. Gets smaller like a cosine does from it's peak, 3. stays constant until the end of the training, ie. $0.1 * lr$ again. On the graph it looks like this:
+  ![alt text](image-5.png)
+  - Weight decay: the GPT3 paper states that for the training OpenAI (Im having seizure writing they're Open when this paper is literally CloseAI) used weight decay to regularize the weights. The regularization is $0.1$.
   - 
 
 ## Other quick wisdom
@@ -66,6 +69,18 @@ of words that are interchangeable to be similar"*, makes us save ~30% of model p
   A100 whitepaper it should 8x, but in Andrej's case it only 3x, in mine... yeah you can see
 - `torch.cuda.max_memory_allocated` looks hella usefull for when you cant pinpoint the vram usage with nvidia-smi/nvtop, and you have this tingling feeling that you should look at max allocated memory cause it feels too much, this gives max allocated memory since the start of the program
 - both `torch.compile` and `torch.autocast` are unusable for device "mps" and M series macbooks (or at least i couldnt make them run without significant effort), additionaly `autocast` works really bad with device "cpu", almost freezing the program, `compile` runs, but performance is slightly worse compared to non-compiled one (650 tok/s vs 750)
+- Pretty cool that you can pass parameter groups and their specific optimization parameters, as we do with weight decay
+```
+    param_dict = {pn: p for pn, p in self.named_parameters() if p.requires_grad}
+    decay_params = [pn for pn, p in param_dict.items() if p.dim() >= 2]
+    nondecay_params = [pn for pn, p in param_dict.items() if p.dim() < 2]
+    optim_groups = [
+        {"params": decay_params, "weigth_decay": weight_decay},
+        {"params": nondecay_params, "weigth_decay": 0.0},
+    ]
+    optimizer = torch.optim.AdamW(optim_groups, lr=lr, betas=(0.9, 0.95), eps=1e-8)
+```
+
 
 ## My whims
 - train with rope
@@ -73,6 +88,7 @@ of words that are interchangeable to be similar"*, makes us save ~30% of model p
 - play with other activation functions
 - learn more about layernotexts and sparsity
 - set tokens not seen in the input.txt to -inf from start
+- Organize README better, add code snippets for smaller chapters
 
 ## Questions
 - Why autocast to FP16 would require gradient scaling? Can't we calculate gradients with FP16 to begin with? Therefore all the tensors would be in the same number range, and I guess there wouldn't be a need to scale anything?

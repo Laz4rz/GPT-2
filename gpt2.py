@@ -1,4 +1,5 @@
 import math
+import inspect
 from dataclasses import dataclass
 
 import tiktoken
@@ -215,6 +216,32 @@ class GPT(nn.Module):
             # since we only generate them?? but we can probably just compare all since, the correctly matched
             # do not add to lose either way, at least if my poor mind math skills are ok
         return logits, loss                      # return logits, loss
+
+    def configure_optimizers(self, weight_decay, lr, device):
+        # getting all parameters that require grad
+        # these are basically just elements like "transformer.h.6.attn.c_attn.bias"
+        param_dict = {pn: p for pn, p in self.named_parameters() if p.requires_grad}
+        # we only want to weight decay matmuls (linear, embedding etc), not biases and norms
+        # we can do that by filtering by the dimension, any thing >= 2D is weigth decayed
+        decay_params = [p for pn, p in param_dict.items() if p.dim() >= 2]
+        nondecay_params = [p for pn, p in param_dict.items() if p.dim() < 2]
+        optim_groups = [
+            {"params": decay_params, "weigth_decay": weight_decay},
+            {"params": nondecay_params, "weigth_decay": 0.0},
+        ]
+        num_decay_params = sum([p.numel() for p in decay_params])
+        num_nondecay_params = sum([p.numel() for p in nondecay_params])
+        print(f"Decayed {len(decay_params)} layers, {num_decay_params} parameters, with weight decay {weight_decay}")
+        print(f"Non-decayed {len(nondecay_params)} layers, {num_nondecay_params} parameters")
+        # newer version of pytorch supports a fused AdamW optimizer, we can check for it
+        # and if available use it for another optimization
+        # inspect.signature allows us to check what parameters are in function signature
+        # neat
+        fused_available = "fused" in inspect.signature(torch.optim.AdamW).parameters
+        use_fused = fused_available and device.type == "cuda"
+        print(f"Using {'fused' if use_fused else 'plain'} AdamW optimizer")
+        optimizer = torch.optim.AdamW(optim_groups, lr=lr, betas=(0.9, 0.95), eps=1e-8, fused=use_fused)
+        return optimizer
 
     @classmethod
     def from_pretrained(cls, model_type, verbose=False):
