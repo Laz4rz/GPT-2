@@ -6,7 +6,7 @@ Following master Karpathy with GPT-2 implementation and training
 - Noisy embedding lines mean that the model could be trained some more
 
 - GPT-2 is decoder only, therefore its architecture is:
-![alt text](image.png)
+![alt text](images/image.png)
   Also:
   - the positional embeddings are learned
     the way they are noisy in the original model tells that its undertrained
@@ -20,7 +20,7 @@ Following master Karpathy with GPT-2 implementation and training
   - linear layers are initialized as normal(0, 0.02), with bias 0, embedding also as normal(0, 0.02), by default torch does not initialize bias as 0. Normally if one follows the Javier initialization, the std should be equal to $\frac{1}{\sqrt{\text{n}\textunderscore\text{module}\textunderscore\text{features}\textunderscore\text{incoming}}}$, the GPT2 paper roughly follows that, as $\frac{1}{\sqrt(768)}=0.036$ so its not too far from $0.02$
   - layernorm also could be initialized, but we leave it as default, which is scale 1 and offset 0
   - the accumulated std of layers stacked in the residual stream is kept at 1, so that the growth of activations after a forward pass (not totally clear how to intuitively see that) is controlled
-  ![alt text](image-1.png)
+  ![alt text](images/image-1.png)
   Which looks a lot like the [growth of variance in random walk](https://stats.stackexchange.com/questions/159650/why-does-the-variance-of-the-random-walk-increase)
   - when using `torch.manual_seed` for different devices -- it really works and gives same results
   - Andrej uses `import code; code.interact(local=locals())` for drop-in debugs
@@ -28,19 +28,19 @@ Following master Karpathy with GPT-2 implementation and training
   - changing dtype impacts 3 different factors: 1. FLOPS, 2. VRAM, 3. Memory bandwidth speed, for example A100 80GB for Float16 is (312 TFLOPS, 80GB, ~2000GB/s), this is great to learn more: [A100 whitepaper](https://images.nvidia.com/aem-dam/en-zz/Solutions/data-center/nvidia-ampere-architecture-whitepaper.pdf)
   - mps is very (VERY) sensitive to other workload, I was getting 2-3k tokens per sec in training, as soon as I just swiped to my left screen, it dropped to 300 toks/sec
   - Float32 vs TF32 (and others):
-  ![alt text](image-2.png)
+  ![alt text](images/image-2.png)
     Intuitively: exponent spans the range, while mantissa allows more finegrained placement of numbers on this range. In TF32 mantissa is crushed to 10 bits (from 23), I think MPS supports BFloat16, and not TF32 [MPS shader dtypes](https://developer.apple.com/documentation/metalperformanceshaders/mpsdatatype) is the only documentation of dtypes I could quickly find. -- coming back to this: there is a quick function in `scratch.py` to check dtypes available on the device, and it looks like MPS does not support `torch.bfloat16`, but CPU does
   - FP32, TF32, and BF16 span the same range, but gradually lower precision, FP16 spans smaller range of number, which is why it cant be used interchangebly with the other 3 -- we cant represent all the same numbers so we would have to scale gradients etc. Look [here](https://pytorch.org/tutorials/recipes/recipes/amp_recipe.html) for a good read up on automatic mixed precision use in pytorch. It basically says that if we dont change the range of dtype used, then we should use `autocast` as a context manager for a forward pass and loss calculation (and only this! without optimizer step etc.), it also says that we should not be casting manually any tensors to half (FP16) or BF16. What Im unsure here is: why using FP16 would need to use gradient scalars? Couldnt we calculate gradient with FP16 as well, so everything is in the same range from the start, and nothing needs to be scaled?
   - Only some parts of the model are impacted [autocast docs](https://pytorch.org/docs/stable/amp.html#cpu-ops-that-can-autocast-to-bfloat16), as some operations are more sensitive to precision changes and should not be automaticaly downcasted (cant be done safely for general case) ie softmax, layernorms, etc
   - `torch.compile` does kernel fusion on elementwise operations, reducing the number of trips the data takes between the GPU and HBM (probably does more things), `torch.compile` in general reduces python overhead and gpu read/writes
-  ![alt text](image-3.png)
-  ![alt text](image-4.png)
+  ![alt text](images/image-3.png)
+  ![alt text](images/image-4.png)
   Not only the CPU <-> GPU transfer is important. Also the speed and number of I/Os between SRAM and HBM need to be tracked, as they can often cause a bottleneck. Kernel fusions are especially useful for this, as they reduce the number of SRAM <-> HBM transfers.
   - if `autocast` throws device error -- make sure you pass a device string, not device object ie if you have something like `torch.device("cuda")`, you want to pass it as `with torch.autocast(device_type=device.type, ...` 
   - Flash Attention is a kernel fusion operation. Why cant `torch.compile` do it then? Cause it demands an algorithmic rewrite of the attention mechanism. Even though Flash Attention is more computationaly costly, it needs less HBM/SRAM transfers, which turn out to be the cause of a big chunk of attention runtime. Therefore, by using more compute, we reduce data transfers, and save time overall. The main premise of Flash Attention is that the big attention matrix (T, T) of interaction between keys and queries is never materialized. [FlashAttention](https://arxiv.org/abs/2205.14135) and [FlashAttention2](https://arxiv.org/abs/2307.08691), and the main mechanism behind the way that Flash Attention works is the one of [partial softmax calculation mechanism](https://arxiv.org/abs/1805.02867). Flash Attention helps even on CPU, getting us from 776 tok/s -> 1154 tok/s.
   - Powers of 2 are really powerful. We probably all know, that basically everything inside of a computer is a power of 2. We want powers of 2. They need less edge cases, and usually do not have to be specially treated. We need them so bad that we go through the code looking for number that do not have a lot of powers of 2 and fix them, and that will yield big improvemtents. One of these numbers is the vocab_size=50257, we push it slightly to 50304, and it turns out we can divide it even by 128. This moves us from 776 tok/s -> 818 tok/s (No FlashA) -> 1191 tok/s (+FlashA). This functionally doesnt change anything. WTE layer is never indexed to these additional weights, as we simply dont have these tokens in the tokenizer, and the lm_head will assign some probabilities to these embeddings, and will have to drive them to -inf (cause theyre never going to appear, so their probability has to be 0), but that is not different from real tokens that may never appear, or appear really sporadically. 
   - There is not really much to write about the learning rate and cosine decay. Basically if you see it for the first time, the idea is that learning rate is modulated, by some coefficient (the more scientific shit I read, the more I write like them -- this only means $lr \cdot coeff$). In this case the coefficient changes in 3 different ways, depending on where we are in the training: 1. It grows linearly, from some small value ie. $0.1 \cdot lr$, to $lr$, 2. Gets smaller like a cosine does from it's peak, 3. stays constant until the end of the training, ie. $0.1 * lr$ again. On the graph it looks like this:
-  ![alt text](image-5.png)
+  ![alt text](images/image-5.png)
   - Weight decay: the GPT3 paper states that for the training OpenAI (Im having seizure writing they're Open when this paper is literally CloseAI) used weight decay to regularize the weights. The regularization is $0.1$.
   - Gradient accumulation can be used as a way to mimick the big batch sizes of the GPT-2 without having OpenAI level of resources, just accumulate the gradient, and make the optimizer step whenever you need. The important bit here is that the torch loss usually reduces the batch loss with "mean". Im gonna botch it, Karpathy really put it nicely in the vid, but in general the accumulation would reduce all the little gradients accumulated only by the mean of batch size $B$, but our real batch size when accumulating is $B\cdot accumulation\textunderscore steps$.
   
