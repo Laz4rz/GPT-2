@@ -42,8 +42,8 @@ Following master Karpathy with GPT-2 implementation and training
   - There is not really much to write about the learning rate and cosine decay. Basically if you see it for the first time, the idea is that learning rate is modulated, by some coefficient (the more scientific shit I read, the more I write like them -- this only means $lr \cdot coeff$). In this case the coefficient changes in 3 different ways, depending on where we are in the training: 1. It grows linearly, from some small value ie. $0.1 \cdot lr$, to $lr$, 2. Gets smaller like a cosine does from it's peak, 3. stays constant until the end of the training, ie. $0.1 * lr$ again. On the graph it looks like this:
   ![alt text](image-5.png)
   - Weight decay: the GPT3 paper states that for the training OpenAI (Im having seizure writing they're Open when this paper is literally CloseAI) used weight decay to regularize the weights. The regularization is $0.1$.
-  - 
-
+  - Gradient accumulation can be used as a way to mimick the big batch sizes of the GPT-2 without having OpenAI level of resources, just accumulate the gradient, and make the optimizer step whenever you need. The important bit here is that the torch loss usually reduces the batch loss with "mean". Im gonna botch it, Karpathy really put it nicely in the vid, but in general the accumulation would reduce all the little gradients accumulated only by the mean of batch size $B$, but our real batch size when accumulating is $B\cdot accumulation\textunderscore steps$.
+  
 ## Other quick wisdom
 - torch buffers are basically non-learnable model tensors
 - torch view and reshape are very similar, 
@@ -80,7 +80,6 @@ of words that are interchangeable to be similar"*, makes us save ~30% of model p
     ]
     optimizer = torch.optim.AdamW(optim_groups, lr=lr, betas=(0.9, 0.95), eps=1e-8)
 ```
-
 
 ## My whims
 - train with rope
