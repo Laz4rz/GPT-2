@@ -43,6 +43,13 @@ Following master Karpathy with GPT-2 implementation and training
   ![alt text](images/image-5.png)
   - Weight decay: the GPT3 paper states that for the training OpenAI (Im having seizure writing they're Open when this paper is literally CloseAI) used weight decay to regularize the weights. The regularization is $0.1$.
   - Gradient accumulation can be used as a way to mimick the big batch sizes of the GPT-2 without having OpenAI level of resources, just accumulate the gradient, and make the optimizer step whenever you need. The important bit here is that the torch loss usually reduces the batch loss with "mean". Im gonna botch it, Karpathy really put it nicely in the vid, but in general the accumulation would reduce all the little gradients accumulated only by the mean of batch size $B$, but our real batch size when accumulating is $B\cdot accumulation\textunderscore steps$.
+  - DDP is Distributed Data Parallel. It allows you to run make some $n$ copies of the model and split the data between them, effectively cutting the training time by about $n$. The DDP comes with parallel work specific terms -- Rank, Local Rank, World Size, Node, AllReduce. 
+    - Node -- a single machine, that could have an arbitrary number of GPUs
+    - Rank -- an ID assigned to a process running on one of the GPUs, unique for all the GPUs in the training run (2 nodes with 2 GPUs each = 4 Ranks)
+    - Local Rank -- an ID assigned to a process running on one of the GPUs on a specific node, unique only on node (2 nodes with 2 GPUs each = 2 Local Ranks each)
+    - World Size -- number of all GPUs (processes) that are started in the distributed training run (2 nodes with 2 GPUs = World Size of 4)
+    - AllReduce -- same as reduce, Array -> SingleNumber operation, but shares the result with all Ranks in the training run (Reduce only leaves result on one Rank), we run AllReduce after a single forward pass on all Ranks, averaging the gradient and sharing it with all Ranks, so they can all do the same optimizing step
+  
   
 ## Other quick wisdom
 - torch buffers are basically non-learnable model tensors
@@ -70,24 +77,30 @@ of words that are interchangeable to be similar"*, makes us save ~30% of model p
 - `torch.cuda.max_memory_allocated` looks hella usefull for when you cant pinpoint the vram usage with nvidia-smi/nvtop, and you have this tingling feeling that you should look at max allocated memory cause it feels too much, this gives max allocated memory since the start of the program
 - both `torch.compile` and `torch.autocast` are unusable for device "mps" and M series macbooks (or at least i couldnt make them run without significant effort), additionaly `autocast` works really bad with device "cpu", almost freezing the program, `compile` runs, but performance is slightly worse compared to non-compiled one (650 tok/s vs 750)
 - Pretty cool that you can pass parameter groups and their specific optimization parameters, as we do with weight decay
-```
-    param_dict = {pn: p for pn, p in self.named_parameters() if p.requires_grad}
-    decay_params = [pn for pn, p in param_dict.items() if p.dim() >= 2]
-    nondecay_params = [pn for pn, p in param_dict.items() if p.dim() < 2]
-    optim_groups = [
-        {"params": decay_params, "weigth_decay": weight_decay},
-        {"params": nondecay_params, "weigth_decay": 0.0},
-    ]
-    optimizer = torch.optim.AdamW(optim_groups, lr=lr, betas=(0.9, 0.95), eps=1e-8)
-```
+  ```
+      param_dict = {pn: p for pn, p in self.named_parameters() if p.requires_grad}
+      decay_params = [pn for pn, p in param_dict.items() if p.dim() >= 2]
+      nondecay_params = [pn for pn, p in param_dict.items() if p.dim() < 2]
+      optim_groups = [
+          {"params": decay_params, "weigth_decay": weight_decay},
+          {"params": nondecay_params, "weigth_decay": 0.0},
+      ]
+      optimizer = torch.optim.AdamW(optim_groups, lr=lr, betas=(0.9, 0.95), eps=1e-8)
+  ```
+- AllReduce is the same as Reduce, but leaves the Reduce result in every rank (device, process, etc) instead of a single place
+![alt text](images/allreduce.png)
+![alt text](images/reduce.png)
+  We can easily work with cross-Rank variables by for example doing custom allReduce: `torch.distributed(some_variable, op=torch.distributed.ReduceOp.SOMEOP)`
+
 
 ## My whims
-- train with rope
-- play with params on small models
-- play with other activation functions
-- learn more about layernotexts and sparsity
-- set tokens not seen in the input.txt to -inf from start
+- Train with rope
+- Play with params on small models
+- Play with other activation functions
+- Learn more about layernotexts and sparsity
+- Set tokens not seen in the input.txt to -inf from start
 - Organize README better, add code snippets for smaller chapters
+- Online softmax with CUDA?
 
 ## Questions
 - Why autocast to FP16 would require gradient scaling? Can't we calculate gradients with FP16 to begin with? Therefore all the tensors would be in the same number range, and I guess there wouldn't be a need to scale anything?
