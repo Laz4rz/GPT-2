@@ -1,12 +1,14 @@
 from gpt2 import GPT, GPTConfig
 from scratch import check_dtypes
 
+import os
 import math
 import tiktoken
 import torch
 import torch.nn as nn
 from datetime import datetime
 from torch.nn import functional as F
+from torch.distributed import init_process_group, destroy_process_group
 
 
 class DataLoaderLite:
@@ -40,6 +42,15 @@ class DataLoaderLite:
     def reset(self):
         self.current_position = 0
         return self
+    
+
+# Distributed Data Parallel (DDP) setup
+ddp = int(os.environ.get("RANK", -1)) != -1 
+# ^if doesnt exist then we return -1, and by -1 or else decide whether ddp
+if ddp:
+    assert torch.cuda.is_available(), "no CUDA device available"
+    init_process_group(backend="nccl") # why nccl?
+    
 
 
 # infer device type
