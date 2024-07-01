@@ -85,7 +85,8 @@ if device == "cuda":
     torch.cuda.manual_seed(seed)
 elif device == "mps":
     torch.mps.manual_seed(seed)
-print("Torch seed is", seed)
+if master_process:
+    print("Torch seed is", seed)
 
 
 # gradient accumulation
