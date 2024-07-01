@@ -9,7 +9,7 @@ import torch.nn as nn
 from torch.nn import functional as F
 
 
-# does 2 passes but it susceptible to overflow
+# does 2 passes but is susceptible to overflow
 class softmax(nn.Module):
     """Only handles flat input"""
     def forward(self, x, exp_module=math):

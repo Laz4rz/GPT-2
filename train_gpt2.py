@@ -177,7 +177,7 @@ for step in range(max_steps):
     norm = nn.utils.clip_grad_norm_(model.parameters(), 1.0)
     optimizer.step()
     # torch.mps.synchronize() # useful for per epoch timings, only lets cpu continue after gpu finishes work
-    # torch.cuda.synchronize()
+    if device == "cuda": torch.cuda.synchronize()
     end = datetime.now()
     tokens_per_sec = (train_loader.B * train_loader.T * grad_accum_steps * ddp_world_size) / (end-start).total_seconds()
     loss = loss.item()
@@ -188,10 +188,10 @@ for step in range(max_steps):
 
 end_total = datetime.now()
 
-# apply all reduce 
-mean_batch_time = sum(map(lambda x: x.total_seconds(), metrics["batch_time"])) / len(metrics["batch_time"])
-mean_tokens_per_sec = sum(metrics["tokens_per_sec"]) / len(metrics["tokens_per_sec"])
-print(f"Runtime: {(end_total-start_total)}\nDevice: {device}\nMean Batch time: {mean_batch_time:.2f}s\nMean tokens/sec: {mean_tokens_per_sec:.2f}")
+if master_process:
+    mean_batch_time = sum(map(lambda x: x.total_seconds(), metrics["batch_time"])) / len(metrics["batch_time"])
+    mean_tokens_per_sec = sum(metrics["tokens_per_sec"]) / len(metrics["tokens_per_sec"])
+    print(f"Runtime: {(end_total-start_total)}\nDevice: {device}\nMean Batch time: {mean_batch_time:.2f}s\nMean tokens/sec: {mean_tokens_per_sec:.2f}")
 
 # destroy process group
 if ddp:
