@@ -185,7 +185,7 @@ class GPT(nn.Module):
         if lower_matmul_precision:
             torch.set_float32_matmul_precision("high")
 
-    # parameters specific to GPT2/GPT3 papers
+ # parameters specific to GPT2/GPT3 papers
     def _init_weights(self, module):
         if isinstance(module, nn.Linear):
             std = 0.02
@@ -217,7 +217,7 @@ class GPT(nn.Module):
             # do not add to lose either way, at least if my poor mind math skills are ok
         return logits, loss                      # return logits, loss
 
-    def configure_optimizers(self, weight_decay, lr, device):
+    def configure_optimizers(self, weight_decay, lr, device, verbose=False):
         # getting all parameters that require grad
         # these are basically just elements like "transformer.h.6.attn.c_attn.bias"
         param_dict = {pn: p for pn, p in self.named_parameters() if p.requires_grad}
@@ -231,15 +231,17 @@ class GPT(nn.Module):
         ]
         num_decay_params = sum([p.numel() for p in decay_params])
         num_nondecay_params = sum([p.numel() for p in nondecay_params])
-        print(f"Decayed {len(decay_params)} layers, {num_decay_params} parameters, with weight decay {weight_decay}")
-        print(f"Non-decayed {len(nondecay_params)} layers, {num_nondecay_params} parameters")
+        if verbose:
+            print(f"Decayed {len(decay_params)} layers, {num_decay_params} parameters, with weight decay {weight_decay}")
+            print(f"Non-decayed {len(nondecay_params)} layers, {num_nondecay_params} parameters")
         # newer version of pytorch supports a fused AdamW optimizer, we can check for it
         # and if available use it for another optimization
         # inspect.signature allows us to check what parameters are in function signature
         # neat
         fused_available = "fused" in inspect.signature(torch.optim.AdamW).parameters
-        use_fused = fused_available and device.type == "cuda"
-        print(f"Using fused AdamW optimizer:", use_fused)
+        use_fused = fused_available and device == "cuda"
+        if verbose:
+            print(f"Using fused AdamW optimizer:", use_fused)
         optimizer = torch.optim.AdamW(optim_groups, lr=lr, betas=(0.9, 0.95), eps=1e-8, fused=use_fused)
         return optimizer
 
@@ -296,7 +298,7 @@ class GPT(nn.Module):
 
 if __name__ == "__main__":
     # init model
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = "cuda" if torch.cuda.is_available() else "cpu"
     # model = GPT.from_pretrained('gpt2', verbose=False)
     model = GPT(GPTConfig()) # random model initialization, will still produce some readable sentence parts due to tokenizer construction
     print(f"Device: {device}")

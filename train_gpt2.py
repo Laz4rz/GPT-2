@@ -14,7 +14,7 @@ from torch.distributed import init_process_group, destroy_process_group
 
 
 class DataLoaderLite:
-    def __init__(self, B, T, inputs=None, process_rank=0, num_processes=1):
+    def __init__(self, B, T, inputs=None, process_rank=0, num_processes=1, verbose=False):
         self.B = B
         self.T = T
         self.process_rank = process_rank
@@ -26,8 +26,9 @@ class DataLoaderLite:
             text = file.read()
         tokens = enc.encode(text)
         self.tokens = torch.tensor(tokens)
-        print(f"Loaded a total of {len(tokens)} tokens")
-        print(f"1 epoch = {len(tokens) // (B * T)} batches")
+        if verbose:
+            print(f"Loaded a total of {len(tokens)} tokens")
+            print(f"1 epoch = {len(tokens) // (B * T)} batches")
 
         self.max_batches = len(tokens) // (B * T)
         self.current_position = self.B * self.T * self.process_rank
@@ -61,10 +62,11 @@ if ddp:
     ddp_rank = int(os.environ["RANK"]) # RANK is the gloval process id, ie. if you have two machines (nodes) with 4 GPUs each, you will have 8 RANKs 
     ddp_local_rank = int(os.environ["LOCAL_RANK"]) # LOCAL_RANK is an id given to this specific process, ie. if you have two machines with 4 GPUs each, you will have 4 LOCAL_RANKs
     ddp_world_size = int(os.environ["WORLD_SIZE"]) # WORLD_SIZE is the  number of GPUs running the DDP
-    print(f"DDP: rank={ddp_rank}, local_rank={ddp_local_rank}, world_size={ddp_world_size}")
     device = f"cuda:{ddp_local_rank}"
     torch.cuda.set_device(device)
     master_process = ddp_rank == 0 # master process is responsible for logs, checkpoints, etc.
+    if master_process:
+        print(f"DDP: rank={ddp_rank}, local_rank={ddp_local_rank}, world_size={ddp_world_size}")
 else:
     # run without DDP
     ddp_rank = 0
@@ -72,7 +74,7 @@ else:
     ddp_world_size = 1
     master_process = True
     # infer device type
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = "cuda" if torch.cuda.is_available() else "cpu"
     # device = torch.device("mps")
     print(f"DDP: disabled")
     print(f"Device: {device}")
@@ -105,13 +107,13 @@ torch.set_float32_matmul_precision("high")
 
 
 # dataloader
-train_loader = DataLoaderLite(B=B, T=T, process_rank=ddp_rank, num_processes=ddp_world_size)
+train_loader = DataLoaderLite(B=B, T=T, process_rank=ddp_rank, num_processes=ddp_world_size, verbose=master_process)
 
 
 # init model
 model = GPT(GPTConfig(vocab_size=50304)) # random model initialization, will still produce some readable sentence parts due to tokenizer construction
 model.to(device)
-# model = torch.compile(model) if device.type == "cuda" else model # cpu compile is stuck on MBP
+# model = torch.compile(model) #if device.type == "cuda" else model # cpu compile is stuck on MBP
 if ddp:
     DDP(model, device_ids=[ddp_local_rank]) # hmm local rank instead of rank, interesting.....
 if master_process: 
@@ -135,7 +137,7 @@ def get_lr(step):
     coeff = 0.5 * (1.0 + math.cos(math.pi + decay_ratio))
     return min_lr + coeff * (max_lr - min_lr)
 # apparently AdamW is bugfixed Adam according to Andrej
-optimizer = model.configure_optimizers(weight_decay=0.01, lr=6e-4, device=device)
+optimizer = model.configure_optimizers(weight_decay=0.01, lr=6e-4, device=device, verbose=master_process)
 
 
 # training loop
@@ -148,7 +150,7 @@ for step in range(max_steps):
     for micro_step in range(grad_accum_steps):
         x, y = train_loader.next_batch()
         x, y = x.to(device), y.to(device)
-        if device.type == "cuda":
+        if "cuda" in device:
             with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
                 logits, loss = model(x, y)
         else:
@@ -195,3 +197,7 @@ print(f"Runtime: {(end_total-start_total)}\nDevice: {device}\nMean Batch time: {
 if ddp:
     destroy_process_group()
     print("Process group destroyed:", ddp_local_rank)
+
+
+
+
