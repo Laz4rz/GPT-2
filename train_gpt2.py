@@ -116,6 +116,7 @@ model.to(device)
 # model = torch.compile(model) #if device.type == "cuda" else model # cpu compile is stuck on MBP
 if ddp:
     DDP(model, device_ids=[ddp_local_rank]) # hmm local rank instead of rank, interesting.....
+raw_model = model if not ddp else model.module # DDP wraps the model in a module, so we have to unwrap it, for some reason it worked for me without this
 if master_process: 
     print("Model initialized successfully!")
 
