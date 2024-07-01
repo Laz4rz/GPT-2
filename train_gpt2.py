@@ -186,6 +186,9 @@ for step in range(max_steps):
     metrics["loss"].append(loss), metrics["tokens_per_sec"].append(tokens_per_sec), metrics["batch_time"].append(batch_time)
     if master_process: 
         print(f"Step: {step}, Loss: {loss_accum:.6f}, Norm: {norm:.4f}, lr: {lr:.4e}, Batch time: {batch_time}, Tokens/sec: {tokens_per_sec:.2f}")
+        if (step+1) % 50 == 0:
+            torch.save(raw_model.state_dict(), f"model_{step+1}.pth")
+            print(f"Model saved at step {step+1}!")
 
 end_total = datetime.now()
 
@@ -203,6 +206,6 @@ if ddp:
 
 # save model
 if master_process:
-    torch.save(raw_model.state_dict(), "model.pth")
+    torch.save(raw_model.state_dict(), f"model_{step}.pth")
     print("Model saved successfully!")
 

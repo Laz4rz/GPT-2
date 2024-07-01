@@ -246,52 +246,99 @@ class GPT(nn.Module):
         return optimizer
 
     @classmethod
-    def from_pretrained(cls, model_type, verbose=False):
-        assert model_type in ["gpt2", "gpt2-medium", "gpt2-large", "gpt2-xl"], "model_type should be one of ['gpt2', 'gpt2-medium', 'gpt2-large', 'gpt2-xl']"
-        from transformers import GPT2LMHeadModel
-        print(f"Loading {model_type} model weights from transformers")
+    def from_pretrained(cls, model_name, verbose=False, local=False):
+        if not local:
+            assert model_name in ["gpt2", "gpt2-medium", "gpt2-large", "gpt2-xl"], "model_name should be one of ['gpt2', 'gpt2-medium', 'gpt2-large', 'gpt2-xl']"
+            from transformers import GPT2LMHeadModel
+            print(f"Loading {model_name} model weights from transformers")
 
-        # n_head, n_layer, n_embd are model specific
-        config_args = {
-            "gpt2"         : dict(n_head=12, n_layer=12, n_embd=768),  # 124M
-            "gpt2-medium"  : dict(n_head=16, n_layer=16, n_embd=1024), # 350M
-            "gpt2-large"   : dict(n_head=36, n_layer=20, n_embd=1280), # 774M
-            "gpt2-xl"      : dict(n_head=48, n_layer=25, n_embd=1600), # 1558M
-        }[model_type]
+            # n_head, n_layer, n_embd are model specific
+            config_args = {
+                "gpt2"         : dict(n_head=12, n_layer=12, n_embd=768),  # 124M
+                "gpt2-medium"  : dict(n_head=16, n_layer=16, n_embd=1024), # 350M
+                "gpt2-large"   : dict(n_head=36, n_layer=20, n_embd=1280), # 774M
+                "gpt2-xl"      : dict(n_head=48, n_layer=25, n_embd=1600), # 1558M
+            }[model_name]
 
-        # load architecture
-        config_args["vocab_size"] = 50257 # constant for all GPT-2 models
-        config_args["block_size"] = 1024  # constant for all GPT-2 models
-        config  = GPTConfig(**config_args)
-        model   = GPT(config)
-        sd      = model.state_dict()
-        sd_keys = sd.keys()
-        sd_keys = [k for k in sd_keys if ".attn.bias" not in k] # remove attn.bias buffer, we omit buffers for some reason i dont know why, it doesnt even matter how hardy I try
+            # load architecture
+            config_args["vocab_size"] = 50257 # constant for all GPT-2 models
+            config_args["block_size"] = 1024  # constant for all GPT-2 models
+            config  = GPTConfig(**config_args)
+            model   = GPT(config)
+            sd      = model.state_dict()
+            sd_keys = sd.keys()
+            sd_keys = [k for k in sd_keys if ".attn.bias" not in k] # remove attn.bias buffer, we omit buffers for some reason i dont know why, it doesnt even matter how hardy I try
 
-        # load huggingface model weights
-        hf_model = GPT2LMHeadModel.from_pretrained(model_type)
-        sd_hf    = hf_model.state_dict()
+            # load huggingface model weights
+            hf_model = GPT2LMHeadModel.from_pretrained(model_name)
+            sd_hf    = hf_model.state_dict()
 
-        # choose, match and copy weights
-        sd_keys_hf = sd_hf.keys()
-        sd_keys_hf = [k for k in sd_keys_hf if ".attn.bias" not in k and "attn.masked_bias" not in k] # remove attn.bias and attn.masked_bias
-        transposed = [".attn.c_attn.weight", ".attn.c_proj.weight", ".mlp.c_fc.weight", ".mlp.c_proj.weight"]
-        # some of the original weights use Conv1D, but we want to load vanilla
-        # which is why we need to transpose some of the weights
-        assert len(sd_keys) == len(sd_keys_hf), f"mismatch in number of keys: custom {len(sd_keys)} vs hf {len(sd_keys_hf)}"
-        for k in sd_keys_hf:
-            if verbose: print(f"   Loading: {k}")
-            if verbose: print("     from: {:15s}\n       to: {:15s}".format(str(sd_hf[k].shape), str(sd[k].shape)))
-            if any(t in k for t in transposed):
-                assert sd_hf[k].shape[::-1] == sd[k].shape, f"mismatch in shape for special: {k}"
+            # choose, match and copy weights
+            sd_keys_hf = sd_hf.keys()
+            sd_keys_hf = [k for k in sd_keys_hf if ".attn.bias" not in k and "attn.masked_bias" not in k] # remove attn.bias and attn.masked_bias
+            transposed = [".attn.c_attn.weight", ".attn.c_proj.weight", ".mlp.c_fc.weight", ".mlp.c_proj.weight"]
+            # some of the original weights use Conv1D, but we want to load vanilla
+            # which is why we need to transpose some of the weights
+            assert len(sd_keys) == len(sd_keys_hf), f"mismatch in number of keys: custom {len(sd_keys)} vs hf {len(sd_keys_hf)}"
+            for k in sd_keys_hf:
+                if verbose: print(f"   Loading: {k}")
+                if verbose: print("     from: {:15s}\n       to: {:15s}".format(str(sd_hf[k].shape), str(sd[k].shape)))
+                if any(t in k for t in transposed):
+                    assert sd_hf[k].shape[::-1] == sd[k].shape, f"mismatch in shape for special: {k}"
+                    with torch.no_grad():
+                        sd[k].copy_(sd_hf[k].t().contiguous()) # .t() works only for 2D weights, .T for any
+                else:
+                    assert sd_hf[k].shape == sd[k].shape, f"mismatch in shape for {k}"
+                    with torch.no_grad():
+                        sd[k].copy_(sd_hf[k])
+
+            return model
+        else:
+            print(f"Loading GPT-2 model weights from local file: {model_name}")
+            config = GPTConfig(vocab_size=50304)
+            model = GPT(config)
+            sd = model.state_dict()
+            sd_keys = sd.keys()
+            sd_keys = [k for k in sd_keys if ".attn.bias" not in k]
+        
+            # load local model weights
+            sd_local = torch.load(model_name)
+            sd_local_keys = sd_local.keys()
+            sd_local_keys = [k for k in sd_local_keys if ".attn.bias" not in k]
+            assert len(sd_keys) == len(sd_local_keys), f"mismatch in number of keys: custom {len(sd_keys)} vs local {len(sd_local_keys)}"
+            for k in sd_local_keys:
+                print(f"   Loading: {k}")
+                print("     from: {:15s}\n       to: {:15s}".format(str(sd_local[k].shape), str(sd[k].shape)))
+                assert sd_local[k].shape == sd[k].shape, f"mismatch in shape for {k}"
                 with torch.no_grad():
-                    sd[k].copy_(sd_hf[k].t().contiguous()) # .t() works only for 2D weights, .T for any
-            else:
-                assert sd_hf[k].shape == sd[k].shape, f"mismatch in shape for {k}"
-                with torch.no_grad():
-                    sd[k].copy_(sd_hf[k])
+                    sd[k].copy_(sd_local[k])
 
-        return model
+    def generate(self, input, max_length=30, num_return_sequences=5):
+        # encode
+        enc = tiktoken.get_encoding("gpt2")
+        tokens = enc.encode(input)
+        tokens = torch.tensor(tokens, dtype=torch.long)
+        tokens = tokens.unsqueeze(0).repeat(num_return_sequences, 1)
+        x = tokens.to(self.device)
+
+        # generating loop
+        torch.manual_seed(42)
+        torch.cuda.manual_seed(42)
+        while x.size(1) < max_length:
+            with torch.no_grad():
+                logits = self(x)
+                logits = logits[:, -1, :]
+                probs  = F.softmax(logits, dim=-1)
+                topk_probs, topk_indices = torch.topk(probs, 50, dim=-1)
+                ix      = torch.multinomial(topk_probs, 1)
+                xcol    = torch.gather(topk_indices, -1, ix)
+                x       = torch.cat((x, xcol), dim=1)
+        
+        # decode generated
+        for i in range(num_return_sequences):
+            tokens  = x[i, :max_length].tolist()
+            decoded = enc.decode(tokens)
+            print(f"> {decoded}")
 
 # class method allows constructing a class through a class method call
 # GPT.from_pretrained('gpt2') would be a way to instantiate a GPT model from a pre-trained checkpoint
