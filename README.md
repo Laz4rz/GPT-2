@@ -1,5 +1,11 @@
 # GPT-2
-Following master Karpathy with GPT-2 implementation and training
+95% of code and the whole idea belongs to Andrej Karpathy. I only added a lot of unhinhed comments that allowed me to understand what is going on, where and why. I also added some other stuff and plan to slowly add stuff like KV-Cache, RoPE and whatever my motivation and free time allows. 
+
+Main files:
+```
+gpt2.py -- contains the model architecture and class
+train_gpt2.py -- whole train loop 
+```
 
 ## Walkthrough notes:
 
