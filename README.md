@@ -94,10 +94,9 @@ of words that are interchangeable to be similar"*, makes us save ~30% of model p
       ]
       optimizer = torch.optim.AdamW(optim_groups, lr=lr, betas=(0.9, 0.95), eps=1e-8)
   ```
-- AllReduce is the same as Reduce, but leaves the Reduce result in every rank (device, process, etc) instead of a single place
+- AllReduce is the same as Reduce, but leaves the Reduce result in every rank (device, process, etc) instead of a single place. We can easily work with cross-Rank variables by for example doing custom allReduce: `torch.distributed(some_variable, op=torch.distributed.ReduceOp.SOMEOP)`.
 ![alt text](images/allreduce.png)
 ![alt text](images/reduce.png)
-  We can easily work with cross-Rank variables by for example doing custom allReduce: `torch.distributed(some_variable, op=torch.distributed.ReduceOp.SOMEOP)`
 
 
 ## My whims
