@@ -3,13 +3,14 @@
 
 Main files:
 ```
-gpt2.py -- contains the model architecture and class
+gpt2.py       -- contains the model architecture and class
 train_gpt2.py -- whole train loop 
 ```
 
 ## Walkthrough notes:
 
-- Noisy embedding lines mean that the model could be trained some more
+- Noisy embedding lines in the embedding layer mean that the model could be trained some more
+  ![alt text](images/wte_lines.png)
 
 - GPT-2 is decoder only, therefore its architecture is:
 ![alt text](images/image.png)
