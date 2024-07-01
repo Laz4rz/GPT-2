@@ -125,7 +125,7 @@ if master_process:
 max_lr = 6e-4
 min_lr = max_lr * 0.1
 warmup_steps = 10
-max_steps = 12
+max_steps = 82 * 10 # 10 epochs
 def get_lr(step):
     # linear warmup
     if step < warmup_steps:
@@ -194,11 +194,15 @@ if master_process:
     mean_tokens_per_sec = sum(metrics["tokens_per_sec"]) / len(metrics["tokens_per_sec"])
     print(f"Runtime: {(end_total-start_total)}\nDevice: {device}\nMean Batch time: {mean_batch_time:.2f}s\nMean tokens/sec: {mean_tokens_per_sec:.2f}")
 
+
 # destroy process group
 if ddp:
     destroy_process_group()
     print("Process group destroyed:", ddp_local_rank)
 
 
-
+# save model
+if master_process:
+    torch.save(raw_model.state_dict(), "model.pth")
+    print("Model saved successfully!")
 
