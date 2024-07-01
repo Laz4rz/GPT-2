@@ -302,7 +302,7 @@ class GPT(nn.Module):
             sd_keys = [k for k in sd_keys if ".attn.bias" not in k]
         
             # load local model weights
-            sd_local = torch.load(model_name)
+            sd_local = torch.load(model_name, map_location="cpu")
             sd_local_keys = sd_local.keys()
             sd_local_keys = [k for k in sd_local_keys if ".attn.bias" not in k]
             assert len(sd_keys) == len(sd_local_keys), f"mismatch in number of keys: custom {len(sd_keys)} vs local {len(sd_local_keys)}"
@@ -312,21 +312,22 @@ class GPT(nn.Module):
                 assert sd_local[k].shape == sd[k].shape, f"mismatch in shape for {k}"
                 with torch.no_grad():
                     sd[k].copy_(sd_local[k])
+        return model
 
-    def generate(self, input, max_length=30, num_return_sequences=5):
+    def generate(self, input, max_length=30, num_return_sequences=5, device="cpu"):
         # encode
         enc = tiktoken.get_encoding("gpt2")
         tokens = enc.encode(input)
         tokens = torch.tensor(tokens, dtype=torch.long)
         tokens = tokens.unsqueeze(0).repeat(num_return_sequences, 1)
-        x = tokens.to(self.device)
+        x = tokens.to(device)
 
         # generating loop
         torch.manual_seed(42)
         torch.cuda.manual_seed(42)
         while x.size(1) < max_length:
             with torch.no_grad():
-                logits = self(x)
+                logits, loss = self(x)
                 logits = logits[:, -1, :]
                 probs  = F.softmax(logits, dim=-1)
                 topk_probs, topk_indices = torch.topk(probs, 50, dim=-1)
